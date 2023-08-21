@@ -7,35 +7,80 @@ terraform {
   }
 }
 
+locals {
+  resource_group_name = "app-grp"
+  location = "West Europe"
+  virtual_network = {
+    name = "app-network"
+    address_space = "10.0.0.0/16"
+  }
+  subnets = [
+    {
+      name = "subnetA"
+      address_prefix = "10.0.0.0/24"
+    },
+    {
+      name = "subnetB"
+      address_prefix = "10.0.1.0/24"
+    }
+  ]
+}
+
 provider "azurerm" {
 	skip_provider_registration = true
   features {}
 }
 
 resource "azurerm_resource_group" "appgrp" {
-	name = "app-grp"
-	location = "West Europe"
+	name = local.resource_group_name
+	location = local.location
 }
 
-resource "azurerm_storage_account" "appstorewrc" {
-  name                     = "appstorewrc"
-  resource_group_name      = azurerm_resource_group.appgrp.name
-  location                 = azurerm_resource_group.appgrp.location
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
-  account_kind = "StorageV2"
+resource "azurerm_virtual_network" "appnetwork" {
+  name                = local.virtual_network.name
+  location            = local.location
+  resource_group_name = local.resource_group_name
+  address_space       = [local.virtual_network.address_space]
+
+  depends_on = [
+    azurerm_resource_group.appgrp
+  ]
 }
 
-resource "azurerm_storage_container" "data" {
-  name                  = "data"
-  storage_account_name  = azurerm_storage_account.appstorewrc.name
-  container_access_type = "blob"
+resource "azurerm_subnet" "subnetA" {
+  name                 = local.subnets[0].name
+  resource_group_name  = local.resource_group_name
+  virtual_network_name = azurerm_virtual_network.appnetwork.name
+  address_prefixes       = [local.subnets[0].address_prefix]
+
+  depends_on = [
+    azurerm_virtual_network.appnetwork
+  ]
 }
 
-resource "azurerm_storage_blob" "maintf" {
-  name                   = "maintf.tf"
-  storage_account_name   = azurerm_storage_account.appstorewrc.name
-  storage_container_name = azurerm_storage_container.data.name
-  type                   = "Block"
-  source                 = "main.tf"
+resource "azurerm_subnet" "subnetB" {
+  name                 = local.subnets[1].name
+  resource_group_name  = local.resource_group_name
+  virtual_network_name = azurerm_virtual_network.appnetwork.name
+  address_prefixes       = [local.subnets[1].address_prefix]
+
+  depends_on = [
+    azurerm_virtual_network.appnetwork
+  ]
+}
+
+resource "azurerm_network_interface" "appinterface" {
+  name                = "app-interface"
+  location            = local.location
+  resource_group_name = local.resource_group_name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.subnetA.id
+    private_ip_address_allocation = "Dynamic"
+  }
+
+  depends_on = [
+    azurerm_subnet.subnetA
+  ]
 }

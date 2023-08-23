@@ -20,6 +20,5 @@ jobs:
 
     - name: Terraform Init and Apply for Azure
       run: |
-        cd azure
         terraform init
         terraform apply -auto-approve
